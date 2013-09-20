@@ -1,8 +1,11 @@
-// -------
-// util.go ::: utilities
-// -------
-// Copyright (c) 2013-Present, Scott Cagno. All rights reserved.
-// This source code is governed by a BSD-style license.
+// * 
+// * Copyright 2013, Scott Cagno. All rights Reserved
+// * License: sites.google.com/site/bsdc3license
+// * 
+// * -------
+// * util.go ::: utilities
+// * -------
+// * 
 
 package mdb
 
@@ -14,29 +17,35 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"time"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/base64"
 )
 
+// bool to int
+func Btoi(ok bool) int {
+	if ok {
+		return 1
+	}
+	return 0
+}
+
 // write json data to an io.Writer
-func (self *Mdb) save(w io.Writer) error {
+func (self *DataBase) save(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	err := enc.Encode(self.Stores)
 	return err
 }
 
 // read json data from and io.Reader 
-func (self *Mdb) load(r io.Reader) error {
+func (self *DataBase) load(r io.Reader) error {
 	dec := json.NewDecoder(r)
-	stores := make(map[string]*store)
+	stores := make(map[string]*Store)
 	err := dec.Decode(&stores)
 	if err == nil {
 		for id, st := range stores {
 			if _, ok := self.Stores[id]; !ok {
 				self.Stores[id] = st
-				self.Stores[id].Ts = time.Now().Unix()
 			}
 		}
 	}
@@ -44,7 +53,7 @@ func (self *Mdb) load(r io.Reader) error {
 }
 
 // backup data in json format
-func (self *Mdb) Save(path, file string) {
+func (self *DataBase) Save(path, file string) {
 	self.mu.Lock()
 	fmt.Printf("saving data to snapshot...  ")
 	os.MkdirAll(path, 0755)
@@ -70,7 +79,7 @@ func (self *Mdb) Save(path, file string) {
 }
 
 // load backup into memory
-func (self *Mdb) Load(path, file string) {
+func (self *DataBase) Load(path, file string) {
 	self.mu.Lock()
 	fmt.Printf("loading data from snapshot...  ")
 	os.MkdirAll(path, 0755)
