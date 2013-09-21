@@ -10,9 +10,12 @@
 package mdb
 
 const (
-	DB_GC 				= 1
-	ST_GC 				= 1
-	HOST 				= "127.0.0.1:5555"
-	CLIENT_TIMEOUT 		= 5*60
-	SNAPSHOT_PATH		= "./snapshots/"
+
+	SERVER_LISTEN 	= ":5555"
+	CLIENT_TIMEOUT 	= 5*60		// 5 min client timeout
+	DB_GC_RATE 		= 1
+	ST_GC_RATE		= 1
+	ARCHIVE_PATH	= "arch"
+	LOGGING_PATH	= "logs"
+
 )

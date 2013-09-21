@@ -10,27 +10,27 @@
 package mdb
 
 import (
+	"runtime"
 	"sync"
 	"time"
-	"runtime"
 )
 
 // store
 type Store struct {
+	PK 			int64
 	Items   	map[string][]string
 	Marked		map[string]int64
 	mu 			sync.Mutex
 }
 
 // return new store
-func InitStore(rate int64) *Store {
+func InitStore() *Store {
 	self := &Store{
+		PK:			0,
 		Items: 		make(map[string][]string),
 		Marked:		make(map[string]int64),
 	}
-	if rate > 0 {
-		go self.RunGC(rate)
-	}
+	go self.RunGC(1)
 	return self
 }
 
@@ -59,39 +59,15 @@ func (self *Store) GC() {
 }
 
 // check for existence of key
-func (self *Store) HasKey(k string) int {
+func (self *Store) Has(k string) int {
 	self.mu.Lock()
 	_, ok := self.Items[k]
 	self.mu.Unlock()
 	return Btoi(ok)
 }
 
-// check for existence of value
-func (self *Store) HasVal(s string) string {
-	self.mu.Lock()
-	for k, v := range self.Items {
-		for _, n := range v {
-			if n == s {
-				self.mu.Unlock()
-				return k
-			}
-		}
-	}
-	self.mu.Unlock()
-	return "0"
-}
-
-// add or modify item in store
-func (self *Store) Set(k string, v ...string) int {
-	self.mu.Lock()
-	self.Items[k] = v
-	_, ok := self.Items[k]
-	self.mu.Unlock()
-	return Btoi(ok)
-}
-
-// append to an items values
-func (self *Store) App(k string, v ...string) int {
+// add to an items values (safely)
+func (self *Store) Add(k string, v ...string) int {
  	self.mu.Lock()
  	if _, ok := self.Items[k]; ok {
  		for _, val := range v {
@@ -103,7 +79,7 @@ func (self *Store) App(k string, v ...string) int {
  	self.Items[k] = v
  	self.mu.Unlock()
  	return Btoi(true)
- } 
+} 
 
 // get an items values from store
 func (self *Store) Get(k string) []string {
@@ -143,4 +119,28 @@ func (self *Store) TTL(k string) int64 {
 	}
 	self.mu.Unlock()
 	return 0
+}
+
+// add or modify item in store (considered to be an unsafe update, overwrites item)
+func (self *Store) Set(k string, v ...string) int {
+	self.mu.Lock()
+	self.Items[k] = v
+	_, ok := self.Items[k]
+	self.mu.Unlock()
+	return Btoi(ok)
+}
+
+// check for existence of value
+func (self *Store) Find(s string) []string {
+	self.mu.Lock()
+	var ss []string
+	for k, v := range self.Items {
+		for _, n := range v {
+			if n == s {
+				ss = append(ss, k)
+			}
+		}
+	}
+	self.mu.Unlock()
+	return ss
 }

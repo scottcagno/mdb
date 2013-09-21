@@ -2,9 +2,9 @@
 // * Copyright 2013, Scott Cagno. All rights Reserved
 // * License: sites.google.com/site/bsdc3license
 // * 
-// * ------
-// * mdb.go ::: in memory database
-// * ------
+// * -------
+// * data.go ::: in memory database
+// * -------
 // * 
 
 package mdb
@@ -23,23 +23,21 @@ type DataBase struct {
 }
 
 // return store instance
-func InitDB(rate int64) *DataBase {
+func InitDB() *DataBase {
 	self := &DataBase{
 		Stores: 	make(map[string]*Store),
 		Marked: 	make(map[string]int64),
 	}
-	if rate > 0 {
-		go self.RunGC(rate)
-	}
+	go self.RunGC(DB_GC_RATE)	// default 1 second
 	return self
 }
 
 // run garbage collector
-func (self *DataBase) RunGC(n int64) {
+func (self *DataBase) RunGC(rate int64) {
 	if len(self.Marked) > 0 {
 		self.GC()
 	}
-	time.AfterFunc(time.Duration(n)*time.Second, func() { self.RunGC(n) })
+	time.AfterFunc(time.Duration(rate)*time.Second, func() { self.RunGC(rate) })
 }
 
 // garbage collector
@@ -55,6 +53,18 @@ func (self *DataBase) GC() {
 	self.mu.Unlock()
 }
 
+// get registered store or return a new one
+func (self *DataBase) ReturnStore(id string, rate int64) *Store {
+	self.mu.Lock()
+	if st, ok := self.Stores[id]; ok {
+		self.mu.Unlock()
+		return st
+	}
+	self.Stores[id] = InitStore()
+	self.mu.Unlock()
+	return self.Stores[id]
+}
+
 // check to see if store exists in Stores
 func (self *DataBase) HasStore(id string) int {
 	self.mu.Lock()
@@ -63,16 +73,32 @@ func (self *DataBase) HasStore(id string) int {
 	return Btoi(ok)
 }
 
-// get registered store or return a new one
-func (self *DataBase) GetStore(id string, rate int64) *Store {
+// create a new store if it doesn't exist
+func (self *DataBase) AddStore(id string) int {
+	self.mu.Lock()
+	_, ok := self.Stores[id]
+	if ok {
+		self.mu.Unlock()
+		return Btoi(!ok)
+	}
+	self.Stores[id] = InitStore()
+	self.mu.Unlock()
+	return Btoi(!ok)
+}
+
+// get a stores keys if it exsts
+func (self *DataBase) GetStore(id string) []string {
 	self.mu.Lock()
 	if st, ok := self.Stores[id]; ok {
+		var ss []string
+		for k, _ := range st.Items {
+			ss = append(ss, k)
+		}
 		self.mu.Unlock()
-		return st
+		return ss
 	}
-	self.Stores[id] = InitStore(rate)
 	self.mu.Unlock()
-	return self.Stores[id]
+	return nil
 }
 
 // remove store

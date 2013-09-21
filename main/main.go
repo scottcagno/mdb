@@ -12,5 +12,5 @@ package main
 import "github.com/scottcagno/mdb"
 
 func main() {
-	mdb.InitDBServer().Serve()
+	mdb.InitServer().Run()
 }

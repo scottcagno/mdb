@@ -10,7 +10,6 @@
 package mdb
 
 import (
-	"strconv"
 	"strings"
 	"bufio"
 	"bytes"
@@ -21,62 +20,21 @@ import (
 	"io"
 )
 
-var GREETING = []string{
-	`      ___           ___           ___     `,
-	`     /\__\         /\  \         /\  \    `,
-	`    /::|  |       /::\  \       /::\  \   `,
-	`   /:|:|  |      /:/\:\  \     /:/\:\  \  `,
-	`  /:/|:|__|__   /:/  \:\__\   /::\~\:\__\ `,
-	` /:/ |::::\__\ /:/__/ \:|__| /:/\:\ \:|__|`,
-	` \/__/~~/:/  / \:\  \ /:/  / \:\~\:\/:/  /`,
-	`       /:/  /   \:\  /:/  /   \:\ \::/  / `,
-	`      /:/  /     \:\/:/  /     \:\/:/  /  `,
-	`     /:/  /       \::/  /       \::/  /   `,
-	`     \/__/         \/__/         \/__/    `,
-	"\n",
-}
-
-var HELP = []string{
-		"data syntax",
-		"-----------",
-		"has <store>",
-		"exp <store> <ttl>",
-		"del <store>",
-		"ttl <store>",
-		"\n",
-		"item syntax",
-		"-----------",
-		"set <store> <key> <val>...",
-		"app <store> <key> <val>...",
-		"get <store> <key>",
-		"del <store> <key>",
-		"has <store> <key>",
-		"exp <store> <key>",
-		"ttl <store> <key>",
-		"\n",
-		"general cmd",
-		"-----------",
-		"db help",
-		"db exit",
-		"save <snapshot>",
-		"load <snapshot>",
-}
-
 // socket server
 type Server struct {
-	DB 		*DataBase
+	db 		*DataBase
 	count 	int
 }
 
 // initialize server
-func InitDBServer() *Server {
+func InitServer() *Server {
 	return &Server {
-		DB: InitDB(DB_GC),
+		db: InitDB(),
 	}
 }
 
-func (self *Server) Serve() {
-	addr, err := net.ResolveTCPAddr("tcp", HOST)
+func (self *Server) Run() {
+	addr, err := net.ResolveTCPAddr("tcp", SERVER_LISTEN)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -84,8 +42,8 @@ func (self *Server) Serve() {
 	if err != nil {
 		log.Panicln(err)
 	}
-	fmt.Println(strings.Join(GREETING, "\n"))
-	log.Printf("Listening on %q...", HOST)
+	fmt.Println("MDB v1.0 alpha", "\n==============")
+	log.Printf("Listening on %q...", SERVER_LISTEN)
 	for {
 		c, err := l.AcceptTCP()
 		if err != nil {
@@ -94,7 +52,7 @@ func (self *Server) Serve() {
 		self.count++
 		log.Printf("ACCEPTED CLIENT REQUEST %q\n", c.RemoteAddr())
 		log.Printf("(TOTAL: %d)\n", self.count)
-		go self.HandleConnection(c)
+		go self.connHandler(c)
 	}
 }
 
@@ -104,159 +62,186 @@ func send(c *net.TCPConn, s string, a ...interface{}) {
 }
 
 // parse incoming commands
-func parse_args(b []byte) (string, []string) {
+func parse(b []byte) (string, string, []string) {
 	raw := string(bytes.ToLower(bytes.TrimRight(b, "\r\n")))
-	arg := strings.Split(raw, " ")
-	if len(arg) >= 2 {
-		return arg[0], arg[1:]
+	if raw != "" {
+		arg := strings.Split(raw, " ")
+		if len(arg) == 1 {
+			return arg[0], "", nil
+		}
+		if len(arg) == 2 {
+			return arg[0], arg[1], nil
+		}
+		return arg[0], arg[1], arg[2:]
 	}
-	return "", nil
+	return "", "", nil
 }
 
 // handle connection
-func (self *Server) HandleConnection(c *net.TCPConn) {
+func (self *Server) connHandler(c *net.TCPConn) {
+	// read incoming bytes
 	r := bufio.NewReader(c)
-	self.ExtendClientTTL(c, CLIENT_TIMEOUT)
+	self.extendConnTTL(c, CLIENT_TIMEOUT)
 	for {
 		b, err := r.ReadBytes('\n')
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			self.CloseConnection(c)
+			self.closeConn(c)
 			return
 		} else {
-			self.ExtendClientTTL(c, CLIENT_TIMEOUT)
+			self.extendConnTTL(c, CLIENT_TIMEOUT)
 		}
-		cmd, args := parse_args(b)
-		if args == nil {
-			send(c, "0")
-			break
-		}
+		// parse incoming bytes, return command, store, and args (if able) 
+		cmd, store, args := parse(b)
 		switch cmd {
-		case "set":
-			if len(args) >= 3 {
-				ok := self.DB.GetStore(args[0], ST_GC).Set(args[1], args[2:]...)
-				send(c, "%v", ok)
-				break
-			}
-			send(c, "0")
-			break
-		case "app":
-			if len(args) >= 3 {
-				ok := self.DB.GetStore(args[0], ST_GC).App(args[1], args[2:]...)
-				send(c, "%v", ok)
-				break
-			}
-			send(c, "0")
-			break
-		case "get":
-			if len(args) == 2 {
-				v := self.DB.GetStore(args[0], ST_GC).Get(args[1])
+		case "":
+			// send error
+			send(c, "recvd no data")
+		case "rand":
+			// send random hash
+			send(c, "%v", Random())
+		case "help":
+			// send help
+			send(c, "-----\ncommands\n-----\nrand, help, exit, save, load, pk, has, add, get, del, exp, ttl, set, find\n")
+		case "exit":
+			// disconnect a client
+			send(c, "Goodbye!")
+			c.SetDeadline(time.Now())
+		case "save":
+			// save a snapshot or archive to disk
+			self.db.Save(ARCHIVE_PATH, "archive.json")
+			send(c, "saved %v/archive.json", ARCHIVE_PATH)
+		case "load":
+			// load a snapshot or archive from disk
+			self.db.Load(ARCHIVE_PATH, "archive.json")
+			send(c, "loaded %v/archive.json", ARCHIVE_PATH)
+		case "pk":
+			// increment return stores pk, and return
+			if args == nil && self.db.HasStore(store) == 1 {
+				self.db.Stores[store].PK++
+				v := self.db.Stores[store].PK
 				send(c, "%v", v)
 				break
 			}
-			send(c, "0") 
-			break
-		case "del":
-			if len(args) == 1 {
-				ok := self.DB.DelStore(args[0])
-				send(c, "%v", ok)
-				break
-			}
-			if len(args) == 2 {
-				ok := self.DB.GetStore(args[0], ST_GC).Del(args[1])
-				send(c, "%v", ok)
-				break
-			}
-			send(c, "0")
-			break
-		case "exp":
-			if len(args) == 2 {
-				ttl, err := strconv.ParseInt(args[1], 10, 64)
-				if err != nil {
-					send(c, "0")
-					break
+			if args != nil && self.db.HasStore(store) == 1 {
+				if args[0] == "reset" {
+					self.db.Stores[store].PK = 0
+					send(c, "%v's pk reset", store)
+					break	
 				}
-				ok := self.DB.ExpStore(args[0], ttl)
-				send(c, "%v", ok)
-				break
+				send(c, "pk err")
 			}
-			if len(args) == 3 {
-				ttl, err := strconv.ParseInt(args[2], 10, 64)
-				if err != nil {
-					send(c, "0")
-					break
-				}
-				ok := self.DB.GetStore(args[0], ST_GC).Exp(args[1], ttl)
-				send(c, "%v", ok)
-				break
-			}
-			send(c, "0")
-			break
-		case "ttl":
-			if len(args) == 1 {
-				ttl := self.DB.TTLStore(args[0])
-				send(c, "%v", ttl)
-				break
-			}
-			if len(args) == 2 {
-				ttl := self.DB.GetStore(args[0], ST_GC).TTL(args[1])
-				send(c, "%v", ttl)
-				break
-			}
-			send(c, "0")
-			break
+			send(c, "pk err")
 		case "has":
-			if len(args) == 1 {
-				ok := self.DB.HasStore(args[0])
-				send(c, "%v", ok)
+			// check to see if a store exists
+			if store != "" && args == nil {
+				v := self.db.HasStore(store)
+				send(c, "%v", v)
 				break
 			}
-			if len(args) == 2 {
-				ok := self.DB.GetStore(args[0], ST_GC).HasKey(args[1])
-				send(c, "%v", ok)
+			// check to see if a key in a store exists
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].Has(args[0])
+				send(c, "%v", v)
 				break
 			}
-			if len(args) == 3 && args[0] == "val" {
-				ok := self.DB.GetStore(args[1], ST_GC).HasVal(args[2])
-				send(c, "%v", ok)
+			send(c, "has err")
+		case "add":
+			// add a store safely (will not overwrite existing values)
+			if store != "" && args == nil {
+				v := self.db.AddStore(store)
+				send(c, "%v", v)
 				break
 			}
-			send(c, "0")
-			break
-		case "save":
-			if len(args) == 1 {
-				self.DB.Save(SNAPSHOT_PATH, args[0])
-				send(c, "saved %v%v", SNAPSHOT_PATH, args[0])
+			// add and items values safely (will not overwrite existing values)
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].Add(args[0], args[1:]...)
+				send(c, "%v", v)
 				break
 			}
-			send(c, "0")
-			break
-		case "load":
-			if len(args) == 1 {
-				self.DB.Load(SNAPSHOT_PATH, args[0])
-				send(c, "loaded %v%v", SNAPSHOT_PATH, args[0])
+			send(c, "add err")
+		case "get": 
+			// get store keys
+			if store != "" && args == nil {
+				v := self.db.GetStore(store)
+				send(c, "%v", v)
 				break
 			}
-			send(c, "0")
-			break
-		case "db":
-			if len(args) == 1 && args[0] == "exit" {
-				c.SetDeadline(time.Now())
+			// get items keys in store
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].Get(args[0])
+				send(c, "%v", v)
 				break
 			}
-			if len(args) == 1 && args[0] == "help" {
-				send(c, "%v", strings.Join(HELP, "\n"))
+			send(c, "get err")
+		case "del":
+			// delete a store
+			if store != "" && args == nil {
+				v := self.db.DelStore(store)
+				send(c, "%v", v)
 				break
 			}
-			send(c, "0")
-			break
+			// delete item in a store
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].Del(args[0])
+				send(c, "%v", v)
+				break
+			}
+			send(c, "del err")
+		case "exp":
+			// expire a store (set in seconds)
+			if store != "" && len(args) == 1 {
+				v := self.db.ExpStore(store, Atoi(args[0]))
+				send(c, "%v", v)
+				break
+			}
+			// expire item in store (set in seconds)
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].Exp(args[0], Atoi(args[1]))
+				send(c, "%v", v)
+				break
+			}
+			send(c, "exp err")
+		case "ttl":
+			// check the time to live on a store that has been set to expire
+			if store != "" && args == nil { 
+				v := self.db.TTLStore(store)
+				send(c, "%v", v)
+				break
+			}
+			// check the time to live on a key that has been set to expire
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].TTL(args[0])
+				send(c, "%v", v)
+				break
+			}
+			send(c, "ttl err")
+		case "set":
+			// update an items values (will overwrite an item, considered not safe)
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].Set(args[0], args[1:]...)
+				send(c, "%v", v)
+				break
+			}
+			send(c, "set err")
+		case "find":
+			// search a store for a value, returns found items key(s)
+			if args != nil && self.db.HasStore(store) == 1 {
+				v := self.db.Stores[store].Find(args[0])
+				send(c, "%v", v)
+				break
+			}
+			send(c, "find err")
+		default:
+			// send error
+			send(c, "err")
 		}
 	}
 }
 
 // close connection
-func (self *Server) CloseConnection(c *net.TCPConn) {
+func (self *Server) closeConn(c *net.TCPConn) {
 	c.Write([]byte("Goodbye\r\n"))
 	log.Printf("CLOSED CONNECTION TO CLIENT [%s]\n", c.RemoteAddr().String())
 	c.Close()
@@ -264,7 +249,7 @@ func (self *Server) CloseConnection(c *net.TCPConn) {
 }
 
 // extend connection ttl
-func (self *Server) ExtendClientTTL(c *net.TCPConn, ttl float64) {
+func (self *Server) extendConnTTL(c *net.TCPConn, ttl float64) {
 	if ttl > 0 {
 		c.SetDeadline(time.Now().Add(time.Duration(ttl) * time.Second))
 	}

@@ -10,16 +10,17 @@
 package mdb
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"crypto/rand"
+	"crypto/md5"
+	"runtime"
+	"strconv"
+	"strings"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"runtime"
-	"strings"
-	"crypto/md5"
-	"crypto/rand"
-	"encoding/base64"
+	"io"
 )
 
 // bool to int
@@ -28,6 +29,12 @@ func Btoi(ok bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ASCII to int
+func Atoi(s string) int64 {
+	ttl, _ := strconv.ParseInt(s, 10, 64)
+	return ttl
 }
 
 // write json data to an io.Writer
