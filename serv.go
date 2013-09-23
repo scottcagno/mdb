@@ -103,7 +103,7 @@ func (self *Server) connHandler(c *net.TCPConn) {
 			send(c, "%v", Random())
 		case "help":
 			// send help
-			send(c, "-----\ncommands\n-----\nrand, help, exit, save, load, pk, has, add, get, del, exp, ttl, set, find\n")
+			send(c, "-----\ncommands\n-----\nrand, help, exit, save, load, pk, has, add, get, del, exp, ttl, set, find")
 		case "exit":
 			// disconnect a client
 			send(c, "Goodbye!")
