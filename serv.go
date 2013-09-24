@@ -63,7 +63,7 @@ func send(c *net.TCPConn, s string, a ...interface{}) {
 
 // parse incoming commands
 func parse(b []byte) (string, string, []string) {
-	raw := string(bytes.ToLower(bytes.TrimRight(b, "\r\n")))
+	raw := string(bytes.TrimRight(b, "\r\n"))
 	if raw != "" {
 		arg := strings.Split(raw, " ")
 		if len(arg) == 1 {
@@ -72,9 +72,33 @@ func parse(b []byte) (string, string, []string) {
 		if len(arg) == 2 {
 			return arg[0], arg[1], nil
 		}
-		return arg[0], arg[1], arg[2:]
+		return arg[0], arg[1], checkQuoted(arg[2:])
 	}
 	return "", "", nil
+}
+
+// check for quoted strings
+// NOTE: cannot use quoted strings with only one 
+//       value aka "test", will result it a bug
+// 		 fix in further revisions.	
+func checkQuoted(args []string) []string {
+	var ss []string
+	var beg, end, inquote int
+	args = strings.Split(strings.Replace(strings.Join(args, " "), `" "`, `"  "`, -1), " ")
+	for i, s := range args {
+		if strings.Contains(s, "\"") {
+			if i > beg && beg <= end {
+				beg, inquote = i, 1
+			} else {
+				end, inquote = i+1, 0
+				ss = append(ss, strings.Join(args[beg:end], " "))
+				beg = end
+			}
+		} else if inquote == 0 && s != "" {
+			ss = append(ss, s)
+		}
+	}
+	return ss
 }
 
 // handle connection
@@ -103,7 +127,7 @@ func (self *Server) connHandler(c *net.TCPConn) {
 			send(c, "%v", Random())
 		case "help":
 			// send help
-			send(c, "-----\ncommands\n-----\nrand, help, exit, save, load, pk, has, add, get, del, exp, ttl, set, find\n")
+			send(c, "-----\ncommands\n-----\nrand, help, exit, save, load, pk, has, add, get, del, exp, ttl, set, find")
 		case "exit":
 			// disconnect a client
 			send(c, "Goodbye!")

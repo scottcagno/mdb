@@ -11,6 +11,7 @@ package mdb
 
 import (
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -87,7 +88,7 @@ func (self *DataBase) AddStore(id string) int {
 }
 
 // get a stores keys if it exsts
-func (self *DataBase) GetStore(id string) []string {
+func (self *DataBase) GetStore(id string) string {
 	self.mu.Lock()
 	if st, ok := self.Stores[id]; ok {
 		var ss []string
@@ -95,10 +96,10 @@ func (self *DataBase) GetStore(id string) []string {
 			ss = append(ss, k)
 		}
 		self.mu.Unlock()
-		return ss
+		return strings.Join(ss, " ")
 	}
 	self.mu.Unlock()
-	return nil
+	return ""
 }
 
 // remove store

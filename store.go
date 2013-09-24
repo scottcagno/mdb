@@ -11,6 +11,7 @@ package mdb
 
 import (
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -82,14 +83,14 @@ func (self *Store) Add(k string, v ...string) int {
 } 
 
 // get an items values from store
-func (self *Store) Get(k string) []string {
+func (self *Store) Get(k string) string {
 	self.mu.Lock()
 	if v, ok := self.Items[k]; ok {
 		self.mu.Unlock()
-		return v
+		return strings.Join(v, " ")
 	}
 	self.mu.Unlock()
-	return nil
+	return ""
 }
 
 // delete item in store
@@ -131,7 +132,7 @@ func (self *Store) Set(k string, v ...string) int {
 }
 
 // check for existence of value
-func (self *Store) Find(s string) []string {
+func (self *Store) Find(s string) string {
 	self.mu.Lock()
 	var ss []string
 	for k, v := range self.Items {
@@ -142,5 +143,5 @@ func (self *Store) Find(s string) []string {
 		}
 	}
 	self.mu.Unlock()
-	return ss
+	return strings.Join(ss, " ")
 }
