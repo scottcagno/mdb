@@ -143,5 +143,8 @@ func (self *Store) Find(s string) string {
 		}
 	}
 	self.mu.Unlock()
+	if len(ss) == 0 {
+		return "find err"
+	}
 	return strings.Join(ss, " ")
 }
