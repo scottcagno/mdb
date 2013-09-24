@@ -78,21 +78,22 @@ func parse(b []byte) (string, string, []string) {
 }
 
 // check for quoted strings
-// NOTE: cannot use quoted strings with only one 
-//       value aka "test", will result it a bug
-// 		 fix in further revisions.	
 func checkQuoted(args []string) []string {
 	var ss []string
 	var beg, end, inquote int
 	args = strings.Split(strings.Replace(strings.Join(args, " "), `" "`, `"  "`, -1), " ")
 	for i, s := range args {
 		if strings.Contains(s, "\"") {
-			if i > beg && beg <= end {
-				beg, inquote = i, 1
+			if strings.HasPrefix(s, "\"") && strings.HasSuffix(s, "\"") {
+				ss = append(ss, s)
 			} else {
-				end, inquote = i+1, 0
-				ss = append(ss, strings.Join(args[beg:end], " "))
-				beg = end
+				if i > beg && beg <= end {
+					beg, inquote = i, 1
+				} else {
+					end, inquote = i+1, 0
+					ss = append(ss, strings.Join(args[beg:end], " "))
+					beg = end
+				}
 			}
 		} else if inquote == 0 && s != "" {
 			ss = append(ss, s)
